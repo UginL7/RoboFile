@@ -1,0 +1,472 @@
+#include "StdAfx.h"
+#include "RecivePost.h"
+
+CRecivePost::CRecivePost(void)
+{
+	pPath = new CInitPath;
+	pLog = new CLogs;
+	pFileInfo = new CGetFileInfo;
+	pTranzit = new CTranzitFiles;
+}
+
+CRecivePost::~CRecivePost(void)
+{
+	if (pPath != NULL)
+	{
+		delete pPath;
+	}
+	if (pLog != NULL)
+	{
+		delete pLog;
+	}
+	if (pTranzit != NULL)
+	{
+		delete pTranzit;
+	}
+}
+
+// Разбор файлов полученых из Киева
+list<CString> CRecivePost::GetPostFromKiev()
+{
+	CString strPrint;
+	list<CString> m_InfoAboutCopyFile;
+
+	strSrcFile = pPath->m_PathInPostKiev;
+
+	// Получаем список всех файлов из папки
+	GetNameFileMailFromFolder(strSrcFile.GetBuffer());
+	strSrcFile.ReleaseBuffer();
+
+	itFileName = vFileName.begin();
+	for(;itFileName != vFileName.end(); ++itFileName)
+	{
+		if (SpreadOutFiles(TRUE, itFileName->GetBuffer()) == true)
+		{					
+			strPrint.Format("Копирование файла '%s' : удачно", *itFileName);
+			m_InfoAboutCopyFile.push_back(strPrint);
+		}
+		else
+		{
+			strPrint.Format("Копирование файла '%s' : отложено", *itFileName);
+			m_InfoAboutCopyFile.push_back(strPrint);
+		}
+		itFileName->ReleaseBuffer();
+	}
+
+	return m_InfoAboutCopyFile;
+}
+
+// Разбор файлов полученых из Районов
+list<CString> CRecivePost::GetPostFromRajon()
+{
+	CString strPrint;
+	list<CString> m_InfoAboutCopyFile;
+
+	strSrcFile = pPath->m_PathInPostRajon;
+
+	// Получаем список всех файлов из папки
+	GetNameFileMailFromFolder(strSrcFile.GetBuffer());
+	strSrcFile.ReleaseBuffer();
+
+	itFileName = vFileName.begin();
+	for(;itFileName != vFileName.end(); ++itFileName)
+	{
+		if (SpreadOutFiles(FALSE, itFileName->GetBuffer()) == true)
+		{					
+			strPrint.Format("Копирование файла '%s' : удачно", *itFileName);
+			m_InfoAboutCopyFile.push_back(strPrint);
+		}
+		else
+		{
+			strPrint.Format("Копирование файла '%s' : отложено", *itFileName);
+			m_InfoAboutCopyFile.push_back(strPrint);
+		}
+		itFileName->ReleaseBuffer();
+
+	}
+	return m_InfoAboutCopyFile;
+}
+
+// Получаем список файлов принятых ГНС в Запорожской области
+void CRecivePost::GetNameFileMailFromFolder(char* pFolderPath)
+{
+	HANDLE hFindFile;
+	WIN32_FIND_DATA pFindData;
+	CString pPath = pFolderPath;
+	CString strFile;
+	pPath += "*";
+
+	//очистка массива записанных файлов
+	vFileName.clear();
+
+	//ищем файлы в папке
+	hFindFile = FindFirstFile(pPath, &pFindData);
+	if (hFindFile != INVALID_HANDLE_VALUE )
+	{
+		do 
+		{
+			if (!(pFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+			{
+				//приводим к нижнему регистру
+				strFile = pFindData.cFileName;
+				strFile = strFile.MakeLower();
+				//добавляем только имя файла в список
+				vFileName.push_back(strFile);
+			}		
+		} while (FindNextFile(hFindFile, &pFindData));		
+	}
+}
+
+// Разбор принятых файлов переносом в архив
+bool CRecivePost::SpreadOutFiles(BOOL bKiev, char* szFileName)
+{
+	CString szSources = ""; //Киев или Районы
+	CString szDestination = ""; // Киев или Районы
+	map<CString, CString>::iterator itSpecFile;
+	bool bRet = false;
+	CString sFileName = szFileName;
+	CString sLog = "";
+	CString sDirPath = "";
+	CString sMaskFile = "";
+	CString sPostArcDirectory = "";
+	SYSTEMTIME pTime;
+	bool bDedicatedFile = false;
+	bCorrectName = false;
+	bSpecFile = false;
+	// Получаем текущий день, месяц и год для структуры папок
+	GetLocalTime(&pTime);
+
+
+//	sFileName = sFileName.MakeLower();
+
+	bCorrectName = pFileInfo->CheckFileNameSymbol(szFileName);
+	if (bKiev == TRUE)
+	{
+		szSources =  pPath->m_PathInPostKiev;
+		szDestination = "Киев";
+		if (bCorrectName == true)
+		{
+			sMaskFile = GetKievDepartNumber(szFileName);
+		}		
+	}
+	else
+	{
+		szSources =  pPath->m_PathInPostRajon;
+		szDestination = "Районы";
+		if (bCorrectName == true)
+		{
+			sMaskFile = sFileName.Left(2);
+		}
+	}
+	
+	if (bCorrectName == true)
+	{
+		if (bKiev == TRUE)
+		{
+			//Формирование пути каталога, в зависимости от типа файла
+			for(itSpecFile = pPath->m_mapKievSpecFile.begin();itSpecFile != pPath->m_mapKievSpecFile.end(); ++itSpecFile)
+			{
+				if (sMaskFile == itSpecFile->first)
+				{
+					sDirPath.Format("%s\\%d\\%s\\Упр-%s\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, itSpecFile->second, pTime.wMonth, pTime.wDay);
+					bSpecFile = true;
+					break;
+				}
+			}
+		}
+		else
+		{
+			//Формирование пути каталога, в зависимости от типа файла
+			for(itSpecFile = pPath->m_mapRajonSpecFile.begin();itSpecFile != pPath->m_mapRajonSpecFile.end(); ++itSpecFile)
+			{
+				if (sMaskFile == itSpecFile->first)
+				{
+					sDirPath.Format("%s\\%d\\%s\\Упр-%s\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, itSpecFile->second, pTime.wMonth, pTime.wDay);
+					bSpecFile = true;
+					break;
+				}
+			}
+		}
+		
+
+		//Проверка файлов перенаправленнх по служебным для Районов
+		sPostArcDirectory = CheckDedicatedFile(szFileName);
+		if (!sPostArcDirectory.IsEmpty())
+		{
+			sDirPath.Format("%s\\%d\\%s\\%s\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, sPostArcDirectory, pTime.wMonth, pTime.wDay);
+		}
+
+		if (bSpecFile == false && sPostArcDirectory.IsEmpty())
+		{
+			if (sMaskFile == "tr")
+			{
+				sDirPath.Format("%s\\%d\\%s\\Транзит\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, pTime.wMonth,  pTime.wDay);		
+			}
+			else if ((sMaskFile < "99") && (sMaskFile > "00"))
+			{
+				sDirPath.Format("%s\\%d\\%s\\Упр-%s\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, sMaskFile, pTime.wMonth, pTime.wDay);
+			}
+			else
+			{
+				sDirPath.Format("%s\\%d\\%s\\Nostand\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, pTime.wMonth, pTime.wDay);
+			}
+		}
+	}
+	else
+	{
+		sDirPath.Format("%s\\%d\\%s\\Ошибки\\%02d\\Получено\\%02d", pPath->m_PathArcPost, pTime.wYear, szDestination, pTime.wMonth, pTime.wDay);
+	}
+
+	// Создаём каталог в Архиве ОГНС
+	for(int i = 0; i < sDirPath.GetLength(); i++)
+	{
+		if (sDirPath.Mid(i, 1) == "\\")
+		{
+			CreateDirectory(sDirPath.Left(i), NULL);
+			if (GetLastError()!= 0)
+			{
+				SetLastError(0);
+			}
+		}			
+	}
+/*
+	if (sDirPath.GetLength() > 0)
+	{
+	}*/
+	CreateDirectory(sDirPath, NULL);
+
+	// Формирование пути файла для копирования
+	sDstFullPath = sDirPath;
+	sDstFullPath += "\\";
+	strArcDir = sDstFullPath;
+	sDstFullPath += sFileName;
+
+	// Проверка на существование файла в архиве, если такой есть, то дописываем в конец текущее время и дату
+	sDstFullPath = pFileInfo->CheckExistingFile(sDstFullPath.GetBuffer());
+	sDstFullPath.ReleaseBuffer();
+
+	//Перемещение файла в архив
+	bRet = CopyFileToDirectory(sFileName.GetBuffer(), sDstFullPath.GetBuffer(), strArcDir.GetBuffer(), bKiev);
+	sFileName.ReleaseBuffer();
+	sDstFullPath.ReleaseBuffer();
+	strArcDir.ReleaseBuffer();
+
+	return bRet;
+}
+
+// Перемещение почты в архив ОГНС
+bool CRecivePost::CopyFileToDirectory(char* szFileName, char* szDstFullPath, char* szDirPah, bool bKiev)
+{
+	CString sFileName;
+	CString sDstFullPath;
+	CString sDirPath;
+	CString m_strSrcFolder;
+	CString sLog;
+	sDirPath = szDirPah;
+	sFileName = szFileName;
+	sDstFullPath = szDstFullPath;
+//	sFileName =	sFileName.MakeLower();
+
+	//Файлы получены из Киева
+	if (bKiev)
+	{
+		//обработка принятых файлов из Киева
+		m_strSrcFolder = pPath->m_PathInPostKiev;
+		if(bSpecFile == false || bCorrectName == false)
+		{
+			if (sFileName.Left(5) == "tr801" || sFileName.Left(5) == "tr000" || sFileName.Left(5) == "trz00" || sFileName.Left(1) == "a" || (sFileName.Left(1) == "e" && sFileName.Left(2) != "er"))
+			{
+				//Регистрация файлов TR801, TR000, TRZ00, a*, e* в канцелярии
+				CopyToKanceljarija(szFileName);
+			}
+		}
+	}
+	//Файлы получены из районв
+	else
+	{
+		//обработка принятых файлов из Районов
+		m_strSrcFolder = pPath->m_PathInPostRajon;
+	}	
+	
+	if (sFileName.Left(2) == "tr")
+	{
+		pTranzit->WorkingTranzitFiles(szFileName, m_strSrcFolder.GetBuffer(), szDirPah, bKiev);
+	}
+	m_strSrcFolder.ReleaseBuffer();
+	m_strSrcFolder += sFileName;
+
+	// Перемещение файла в архив ОГНС
+	if(MoveFileEx(m_strSrcFolder, sDstFullPath, MOVEFILE_REPLACE_EXISTING ))
+	{
+		sLog.Format("'%s' + удачно перемещено в папку '%s'.", sFileName, sDirPath);
+		if (bKiev == TRUE)
+		{
+			pLog->WriteInFileLog(&pPath->m_LogFromKiev, sLog.GetBuffer());
+		}
+		else
+		{
+			pLog->WriteInFileLog(&pPath->m_LogFromRajon, sLog.GetBuffer());
+		}
+		
+		sLog.ReleaseBuffer();
+		return true;
+	}
+	else
+	{
+		// Ошибка при перемещении в архив ОГНС
+		LPTSTR msg;
+		DWORD res= ::FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER, NULL, GetLastError(), 0, (LPTSTR)&msg, 0, NULL );
+		if (res != 0)
+		{
+			sLog.Format("'%s' - в папку '%s' переместить не удалось.\nПричина - %s.",sFileName, sDirPath, msg);
+			if (bKiev == TRUE)
+			{
+				pLog->WriteInFileLog(&pPath->m_LogFromKiev, sLog.GetBuffer());
+			}
+			else
+			{
+				pLog->WriteInFileLog(&pPath->m_LogFromRajon, sLog.GetBuffer());
+			}
+			sLog.ReleaseBuffer();
+			LocalFree( msg );
+		}
+		else
+		{
+			sLog.Format("'%s' - в папку '%s' переместить не удалось.\nПричина - неизвестно.",sFileName, sDirPath);
+			if (bKiev == TRUE)
+			{
+				pLog->WriteInFileLog(&pPath->m_LogFromKiev, sLog.GetBuffer());
+			}
+			else
+			{
+				pLog->WriteInFileLog(&pPath->m_LogFromRajon, sLog.GetBuffer());
+			}
+			sLog.ReleaseBuffer();
+		}
+		return false;
+	}
+}
+
+// Копирование в папку канцелярии
+bool CRecivePost::CopyToKanceljarija(char* szFileName)
+{
+	CString sLog;
+	CString strSrcFile = pPath->m_PathInPostKiev;
+	CString strDstKanc = pPath->m_PathInKanceljarija;
+	strDstKanc += szFileName;
+	strSrcFile += szFileName;
+
+	if(CopyFile(strSrcFile, strDstKanc, FALSE))
+	{
+		sLog.Format("'%s' + удачно скопирован в папку '%s'.", szFileName,  pPath->m_PathInKanceljarija);
+
+		pLog->WriteInFileLog(&pPath->m_LogFromKiev, sLog.GetBuffer());
+		sLog.ReleaseBuffer();
+		return true;
+	}
+	else
+	{
+		// Ошибка при копировании
+		LPTSTR msg;
+		DWORD res= ::FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER, NULL, GetLastError(), 0, (LPTSTR)&msg, 0, NULL );
+		if (res != 0)
+		{
+			sLog.Format("'%s' - в папку '%s' скопировать не удалось.\nПричина - %s.",szFileName, pPath->m_PathInPostKiev, msg);
+			pLog->WriteInFileLog(&pPath->m_LogFromKiev, sLog.GetBuffer());
+			sLog.ReleaseBuffer();
+			LocalFree( msg );
+		}
+		else
+		{
+			sLog.Format("'%s' - в папку '%s' скопировать не удалось.\nПричина - неизвестно.",szFileName, pPath->m_PathInPostKiev);
+			pLog->WriteInFileLog(&pPath->m_LogFromKiev, sLog.GetBuffer());
+			sLog.ReleaseBuffer();
+		}
+		return false;
+	}	
+}
+
+// Определение кода управления для киевской почты
+CString CRecivePost::GetKievDepartNumber(char* szFileName)
+{
+	CString strFileName = szFileName;
+	CString strDepartNumber;
+	int nFirstDotPos = 0;
+
+//	strFileName = strFileName.MakeLower();
+
+	// формат файла входящей почты из Киева должен быть такой E№-Б.УУ.00
+	// Е - служебная инфо из Киева, может быть А - срочная информация
+	// №-Б - регистрационный номер исходяшей почты в Киеве
+	// УУ - первые два знака индекса самостоятельного подразделения
+
+	//Находим первую точку в имени файла
+	nFirstDotPos = strFileName.Find(".", nFirstDotPos)+1;
+	// проверяем, есть ли вторая точка
+	if(strFileName.Mid(nFirstDotPos+2,1) == ".")
+	{
+		//получаем код индекса самостоятельного подразделения
+		strDepartNumber = strFileName.Mid(nFirstDotPos,2);
+	}
+	else
+	{
+		// возможно транзитный файл из Киева
+		if (strFileName.Left(2) == "tr")
+		{
+			strDepartNumber = "tr";
+		}
+		else
+		{
+			// для проверки на спецмаски
+			strDepartNumber = strFileName.Left(2);
+		}
+	}
+
+	return strDepartNumber;
+}
+
+// Проверка файлов перенаправленнх по служебным для Районов
+CString CRecivePost::CheckDedicatedFile(char* szFileName)
+{
+	CString strFileName = szFileName;
+	CString strDedicatedFile;
+	CString strFileNameMask;
+	CString strFileExtMask;
+	map<CString, CString>::iterator itDedicatedFile;
+
+//	strFileName = strFileName.MakeLower();
+
+	for (itDedicatedFile = pPath->m_mapRajonDedicatedFile.begin(); itDedicatedFile != pPath->m_mapRajonDedicatedFile.end(); ++itDedicatedFile)
+	{
+		strDedicatedFile = itDedicatedFile->first;
+		//Получение маски в имени файла
+		int nSeparate = strDedicatedFile.Find("|");
+		if (nSeparate == -1)
+		{
+			return "";
+		}
+		strFileNameMask = strDedicatedFile.Left(nSeparate);
+		nSeparate++;
+		//Получение маски в расширении файла
+		strFileExtMask = strDedicatedFile.Right(strDedicatedFile.GetLength()-nSeparate);
+		if (strFileNameMask == strFileName.Left(strFileNameMask.GetLength()))
+		{
+			//Проверка, что маска расширения должна быть конкретной
+			if (strFileExtMask != "*")
+			{
+				if(strFileExtMask == strFileName.Right(strFileExtMask.GetLength()))
+				{
+					//Маска имени файла и расширения - совпали
+					return itDedicatedFile->second;
+				}
+			}
+			else
+			{
+				//Расширение может быть любым, а маска по имени файла - совпала
+				return itDedicatedFile->second;
+			}
+		}
+	}
+
+	return "";
+}

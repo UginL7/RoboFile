@@ -1,0 +1,218 @@
+#include "StdAfx.h"
+#include "InitPath.h"
+
+#ifdef _DEBUG
+#pragma comment (lib, "TinyXML_d.lib")
+#else
+#pragma comment (lib, "TinyXML.lib")
+#endif
+
+CInitPath::CInitPath(void)
+{
+	memset(szConfigFile,0, MAX_PATH);
+#ifdef _DEBUG
+	memcpy(szConfigFile, "C:\\post\\config_robot.xml", strlen("C:\\post\\config_robot.xml"));
+#else
+	memcpy(szConfigFile, "config_robot.xml", strlen("config_robot.xml"));
+#endif
+	InitXml();
+}
+
+CInitPath::~CInitPath(void)
+{
+	m_mapODPISrcDst.clear();
+	m_mapSGNISrcDst.clear();
+	m_mapRajonSrcDst.clear();
+	m_mapTRRajonID.clear();
+	m_mapKievSrcDst.clear();
+	m_mapKievSpecFile.clear();
+	m_mapRajonSpecFile.clear();
+	m_mapRajonDedicatedFile.clear();
+	m_listMask.clear();
+}
+
+// Инициализация переменных для работы с XML
+void CInitPath::InitXml(void)
+{
+	// Открытие XML-файла
+	TiXmlDocument *pDocXML = new TiXmlDocument(szConfigFile);
+
+	// Проверка удачного открытия файла
+	if (!pDocXML->LoadFile())
+	{
+		pDocXML->ErrorDesc();
+		exit(-1);
+	}
+	// Открытие основного блока настроек
+	pMainConf = pDocXML->FirstChildElement("configuration");
+
+	GetPathFromCfg();
+	GetTimeAndSizeFromCfg();
+	GetSpecMaskFromCfg();
+	GetLogFilePathFromCfg();
+	GetPathTrFromKiev();
+}
+
+// Список масок файлов, которые необходимо отправить, независимо от их размера
+void CInitPath::GetSpecMaskFromCfg(void)
+{
+	// Открытие блока настроек масок файлов
+	pPathElement = pMainConf->FirstChildElement("mask");
+	// Список масок
+	pPath = pPathElement->FirstChildElement("SpecFile");
+	do 
+	{
+		m_listMask.push_back(pPath->Attribute("mask"));
+		pPath = pPath->NextSiblingElement("SpecFile");
+	} while (pPath != NULL);
+
+	// Открытие блока настроек масок файлов для Киева
+	pPathElement = pMainConf->FirstChildElement("kiev_spec_file");
+	// Список масок
+	pPath = pPathElement->FirstChildElement("KievSpecFile");
+	do 
+	{
+		m_mapKievSpecFile[pPath->Attribute("mask")] = pPath->Attribute("upr");
+		pPath = pPath->NextSiblingElement("KievSpecFile");
+	} while (pPath != NULL);
+
+	// Открытие блока настроек масок файлов для Районов
+	pPathElement = pMainConf->FirstChildElement("rajon_spec_file");
+	// Список масок
+	pPath = pPathElement->FirstChildElement("RajonSpecFile");
+	do 
+	{
+		m_mapRajonSpecFile[pPath->Attribute("mask")] = pPath->Attribute("upr");
+		pPath = pPath->NextSiblingElement("RajonSpecFile");
+	} while (pPath != NULL);
+
+
+	// Открытие блока настроек масок файлов перенаправленнх по служебным для Районов
+	pPathElement = pMainConf->FirstChildElement("rajon_dedicated_file");
+	// Список масок
+	pPath = pPathElement->FirstChildElement("RajonDedicatedFile");
+	do 
+	{
+		m_mapRajonDedicatedFile[pPath->Attribute("mask")] = pPath->Attribute("folder");
+		pPath = pPath->NextSiblingElement("RajonDedicatedFile");
+	} while (pPath != NULL);
+
+}
+
+// Получение интервалов времени и размеров файлов допустимых для отправки
+void CInitPath::GetTimeAndSizeFromCfg(void)
+{
+	// Открытие блока настроек времени и размера файлов
+	pPathElement = pMainConf->FirstChildElement("time_and_size");
+	// размер файлов в рабочее время
+	pPath = pPathElement->FirstChildElement("DayTimeFile");
+	pPath->Attribute("size_mb", (int*)&dwDayTimeFileSize);
+	// размер файлов в нерабочее время
+	pPath = pPathElement->FirstChildElement("NightTimeFile");
+	pPath->Attribute("size_mb", (int*)&dwNightTimeFileSize);
+	// начало рабочего времени
+	pPath = pPathElement->FirstChildElement("MorningTime");
+	pPath->Attribute("time_hh", (int*)&wMorningTime);
+	// начало не рабочего времени
+	pPath = pPathElement->FirstChildElement("EveningTime");
+	pPath->Attribute("time_hh", (int*)&wEveningTime);
+}
+
+// Получение путей к лог-файлам
+void CInitPath::GetLogFilePathFromCfg(void)
+{
+	// Открытие блока настроек лог-файлы
+	pPathElement = pMainConf->FirstChildElement("logs");
+	// Лог-файл для отправки на Киев
+	pPath = pPathElement->FirstChildElement("ToKievLog");
+	m_LogToKiev = pPath->Attribute("file");
+	// Лог-файл для получения из Киева
+	pPath = pPathElement->FirstChildElement("FromKievLog");
+	m_LogFromKiev = pPath->Attribute("file");
+	// Лог-файл для отправки на районы
+	pPath = pPathElement->FirstChildElement("ToRajonLog");
+	m_LogToRajon = pPath->Attribute("file");
+	// Лог-файл для получения из райнонов
+	pPath = pPathElement->FirstChildElement("FromRajonLog");
+	m_LogFromRajon = pPath->Attribute("file");
+	// Лог-файл для входящих Транзит-файлов
+	pPath = pPathElement->FirstChildElement("InTranzit");
+	m_LogInTranzit = pPath->Attribute("file");
+	// Лог-файл для исходящих Транзит-файлов
+	pPath = pPathElement->FirstChildElement("OutTranzit");
+	m_LogOutTranzit = pPath->Attribute("file");
+}
+
+// Получение списка путей
+void CInitPath::GetPathFromCfg(void)
+{
+	// Открытие блока настроек путей
+	pPathElement = pMainConf->FirstChildElement("path");
+	// папка архивов почты
+	pPath = pPathElement->FirstChildElement("ArcPostPath");
+	m_PathArcPost = pPath->Attribute("path");
+	// папка входящей почты из районов
+	pPath = pPathElement->FirstChildElement("InPostRajon");
+	m_PathInPostRajon = pPath->Attribute("path");
+	// папка входящей почты из Киева
+	pPath = pPathElement->FirstChildElement("InPostKiev");
+	m_PathInPostKiev = pPath->Attribute("path");
+	// папка входящей почты для концелярии
+	pPath = pPathElement->FirstChildElement("Kanceljarija");
+	m_PathInKanceljarija = pPath->Attribute("path");
+	// папка исходящей почты для всех ОДПИ
+	pPath = pPathElement->FirstChildElement("OutAllODPI");
+	m_PathOutAllODPI = pPath->Attribute("path");
+	// папка исходящей почты для всех районов
+	pPath = pPathElement->FirstChildElement("OutAllRajon");
+	m_PathOutAllRajonPost = pPath->Attribute("path");
+	// папка исходящей почты для всех районов + СГНИ
+	pPath = pPathElement->FirstChildElement("OutAllRajonSDPI");
+	m_PathOutAllRajonSGNIPost = pPath->Attribute("path");
+	// Папка для ошибочно названых файлов при отправке, попадут сюда, а не абонентам
+	pPath = pPathElement->FirstChildElement("OutError");
+	m_PathOutError = pPath->Attribute("path");
+	// Папка для файлов большого размера
+	pPath = pPathElement->FirstChildElement("BigFile");
+	m_PathOutBigFile = pPath->Attribute("path");
+	// Папка направлений отправки на Киев и папки для Fossmail
+	pPath = pPathElement->FirstChildElement("Kiev");
+	m_mapKievSrcDst[pPath->Attribute("dst")] = pPath->Attribute("src");
+
+	//Цикл получения направлений отправки на конкретный район и папки для Fossmail
+	pPath = pPathElement->FirstChildElement("Rajon");
+	do 
+	{
+		m_mapRajonSrcDst[pPath->Attribute("dst")] = pPath->Attribute("src");
+		pPath = pPath->NextSiblingElement("Rajon");
+	} while (pPath != NULL);
+	
+	//Цикл получения направлений отправки на ОДПИ и папки для Fossmail
+	pPath = pPathElement->FirstChildElement("ODPI");
+	do 
+	{
+		m_mapODPISrcDst[pPath->Attribute("dst")] = pPath->Attribute("src");
+		pPath = pPath->NextSiblingElement("ODPI");
+	} while (pPath != NULL);
+
+
+	// Папка направлений отправки на СГНИ и папки для Fossmail
+	m_mapSGNISrcDst = m_mapRajonSrcDst;
+	pPath = pPathElement->FirstChildElement("SGNI");
+	m_mapSGNISrcDst[pPath->Attribute("dst")] = pPath->Attribute("src");
+}
+
+// Получение списка кодов инспекций и путей для входящих транзитных файлов
+void CInitPath::GetPathTrFromKiev(void)
+{
+	// Открытие блока настроек путей
+	pPathElement = pMainConf->FirstChildElement("tranzit");
+	
+	//Цикл получения кода инспекции и пути для входящего транзитного файла из Киева
+	pPath = pPathElement->FirstChildElement("Rajon");
+	do 
+	{
+		m_mapTRRajonID[pPath->Attribute("id")] = pPath->Attribute("src");
+		pPath = pPath->NextSiblingElement("Rajon");
+	} while (pPath != NULL);
+}

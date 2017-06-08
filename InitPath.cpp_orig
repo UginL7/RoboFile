@@ -1,0 +1,168 @@
+#include "StdAfx.h"
+#include "InitPath.h"
+
+CInitPath::CInitPath(void)
+{
+	memset(szConfigFile,0, MAX_PATH);
+#ifdef _DEBUG
+	memcpy(szConfigFile, "c:\\post\\config_robot.ini", strlen("c:\\post\\config_robot.ini"));
+#else
+	memcpy(szConfigFile, "config_robot.ini", strlen("config_robot.ini"));
+#endif
+
+	wMorningTime = GetPrivateProfileInt("Time_Interval", "MorningTime", 0, szConfigFile);
+	wEveningTime = GetPrivateProfileInt("Time_Interval", "EveningTime", 0, szConfigFile);
+	wDayTimeFileSize = GetPrivateProfileInt("File_Size", "DayTimeFileSize", 0, szConfigFile);
+	wNightTimeFileSize = GetPrivateProfileInt("File_Size", "NightTimeFileSize", 0, szConfigFile);
+	
+	szPath = new char[MAX_PATH];
+	GetPrivateProfileString("Post_In", "InPost", "",  szPath, MAX_PATH, szConfigFile);
+	m_PathInPost = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Out", "OutKiev", "", szPath, MAX_PATH, szConfigFile);
+	m_PathOutKievPost = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Out", "OutAllRajon", "", szPath, MAX_PATH, szConfigFile);
+	m_PathOutAllRajonPost = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Out", "OutAllRajonSDPI", "", szPath, MAX_PATH, szConfigFile);
+	m_PathOutAllRajonSGNIPost = szPath;
+
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Error", "OutError", "", szPath, MAX_PATH, szConfigFile);
+	m_PathOutError = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Error", "BigFile", "", szPath, MAX_PATH, szConfigFile);
+	m_PathOutBigFile = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Dst", "DstKiev", "", szPath, MAX_PATH, szConfigFile);
+	m_PathDstKiev = szPath;
+
+	strset(szPath, 0);
+	GetPrivateProfileString("LogFile_Path", "ToKievLog", "", szPath, MAX_PATH, szConfigFile);
+	m_LogToKiev = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("LogFile_Path", "FromKievLog", "", szPath, MAX_PATH, szConfigFile);
+	m_LogFromKiev = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("LogFile_Path", "ToRajonLog", "", szPath, MAX_PATH, szConfigFile);
+	m_LogToRajon = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("LogFile_Path", "FromRajonLog", "", szPath, MAX_PATH, szConfigFile);
+	m_LogFromRajon = szPath;
+	strset(szPath, 0);
+
+}
+
+CInitPath::~CInitPath(void)
+{
+	if (szPath != 0)
+	{
+		delete szPath;
+	}
+}
+
+// Список масок файлов, которые необходимо отправить, независимо от их размера
+list<CString> CInitPath::GetSpecMask(void)
+{
+	// Перечень масок-файлов, которые необходимо пропустить в любое время, не смотря на размер
+	list<CString> m_ListSpecMask;
+	CString m_MaskFile;
+	CString strMask;
+	int nPos = 0;
+	int nCurPos = 0;
+	szPath = new char[MAX_PATH];
+	GetPrivateProfileString("Spec_FileMask", "SpecFileMask", "",  szPath, MAX_PATH, szConfigFile);
+	m_MaskFile = szPath;
+
+	do 
+	{
+		nPos = m_MaskFile.Find(";", nPos);
+		if (nPos == -1)
+		{
+			strMask = m_MaskFile.Mid(nCurPos, m_MaskFile.GetLength()-nCurPos);
+			m_ListSpecMask.push_back(strMask);
+			break;
+		}
+		strMask = m_MaskFile.Mid(nCurPos, nPos-nCurPos);
+		m_ListSpecMask.push_back(strMask);
+		nPos++;
+		nCurPos = nPos;
+	} while (nPos != m_MaskFile.GetLength());
+
+	return m_ListSpecMask;
+}
+
+// Список соответсвия исходящих папок с папками Fossmail
+map<CString, CString> CInitPath::GetRajonCode(void)
+{
+	// Путь к папке исходящей почты на конкретный район
+	CString m_PathOutRajon;
+	// Путь к папке откуда забирает FossMail почту для Района
+	CString m_PathDstRajon;
+	// Строка соответсвия исходящих папок с папками Fossmail
+	CString strRajCode;
+	CString strCode;
+	CString strRajon;
+	CString strRajonPath;
+	CString strCodePath;
+	map<CString, CString> m_RajonCode;
+	int nPos = 0;
+	int nPosRajon = 0;
+	int nPosCode = 0;
+	char szRajCode[1024000];
+
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Out", "OutRajon", "", szPath, MAX_PATH, szConfigFile);
+	m_PathOutRajon = szPath;
+	strset(szPath, 0);
+	GetPrivateProfileString("Post_Dst", "DstRajon", "", szPath, MAX_PATH, szConfigFile);
+	m_PathDstRajon = szPath;
+	strset(szRajCode, 0);
+	GetPrivateProfileString("Post_Out", "RajonCode", "", szRajCode, MAX_PATH, szConfigFile);
+	strRajCode = szRajCode;
+
+	int nSize = strRajCode.GetLength();
+
+	do 
+	{
+		nPosRajon = strRajCode.Find("|", nPosRajon);
+		if (nPosRajon == -1)
+		{
+			strRajon = strRajCode.Mid(nPos, nPosRajon-nPos);
+			nPosCode = strRajon.Find(":", 0);
+			strRajCode = strRajon.Left(nPosCode);
+
+			nPosCode++;
+
+			strCode = strRajCode.Mid(nPosCode, strRajon.GetLength());
+			strRajonPath = m_PathOutRajon;
+			strRajonPath += strRajon;
+
+			strCodePath = m_PathDstRajon;
+			strCodePath += strCode;
+			m_RajonCode[strRajonPath] = strCodePath;
+			break;
+		}
+		strRajon = strRajCode.Mid(nPos, nPosRajon-nPos);
+		nPosCode = strRajon.Find(":", 0);
+		strCode = strRajon.Left(nPosCode);
+		
+		nPosCode++;
+
+		strRajon = strRajon.Mid(nPosCode, strRajon.GetLength());
+		strRajonPath = m_PathOutRajon;
+		strRajonPath += strRajon;
+		strRajonPath += "\\";
+		
+		strCodePath = m_PathDstRajon;
+		strCodePath += strCode;
+		strCodePath += "\\";
+		m_RajonCode[strRajonPath] = strCodePath;
+		
+		nPosRajon++;
+		nPos = nPosRajon;
+	} while (nPosRajon != strRajCode.GetLength());
+
+	return m_RajonCode;
+}

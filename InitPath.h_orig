@@ -1,0 +1,53 @@
+#pragma once
+#pragma warning (disable : 4996)
+#include <list>
+#include <map>
+using namespace std;
+
+class CInitPath
+{
+public:
+	CInitPath(void);
+	virtual ~CInitPath(void);
+	// Путь к папке входящей почты
+	CString m_PathInPost;
+	// Путь к папке исходящей почты на Киев
+	CString m_PathOutKievPost;
+	// Путь к папке исходящей почты на Все РАЙОНЫ
+	CString m_PathOutAllRajonPost;
+	// Путь к папке исходящей почты на Все РАЙОНЫ + СГНИ
+	CString m_PathOutAllRajonSGNIPost;
+	// Путь к папке ошибок исходящей почты
+	CString m_PathOutError;
+	// Путь к папке Больших файлов исходящей почты
+	CString m_PathOutBigFile;
+	// Путь к папке откуда забирает FossMail почту для Киева
+	CString m_PathDstKiev;
+	// Путь к лог файлу для почты полученной из Киева
+	CString m_LogFromKiev;
+	// Путь к лог файлу для почты отпрвеленной на Киев
+	CString m_LogToKiev;
+	// Путь к лог файлу для почты полученной из Районов
+	CString m_LogFromRajon;
+	// Путь к лог файлу для почты отпрвеленной на Районы
+	CString m_LogToRajon;
+	
+	// Размер файла в рабочее время между UpTime и DownTime
+	DWORD wDayTimeFileSize;
+	// Размер файла в ночное время между DownTime и UpTime
+	DWORD wNightTimeFileSize;
+	// Время начала дневного трафика
+	WORD wMorningTime;
+	// Время начала ночного трафика
+	WORD wEveningTime;
+	// Список масок файлов, которые необходимо отправить, независимо от их размера
+	list<CString> GetSpecMask(void);
+	// Список соответсвия исходящих папок с папками Fossmail
+	map<CString, CString> CInitPath::GetRajonCode(void);
+
+private:
+	// Путь к файлу конфигурации
+	char szConfigFile[MAX_PATH];
+	// Временное хранение пути
+	char *szPath;
+};
